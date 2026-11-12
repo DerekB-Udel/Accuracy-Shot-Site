@@ -422,7 +422,7 @@ assert_equal(show_stats(make_test_state()).state.shot_history, [])
 set_site_information(
     author="Derek Bellin",
     description="Predicts whether a basketball shot goes in using physics.",
-    sources=["https://en.wikipedia.org/wiki/Projectile_motion"],
+    sources=["https://en.wikipedia.org/wiki/Projectile_motion","LLM Documentation (2).pdf"],
     planning=["Copy of CS1 Final Project 1_ Design.pdf",
               "Copy of CS1 Final Project 0_ Pick a Problem.pdf"],
     links=["https://derekb-udel.github.io/Accuracy-Shot-Site/"],
