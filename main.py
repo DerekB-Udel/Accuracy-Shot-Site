@@ -425,6 +425,6 @@ set_site_information(
     sources=["https://en.wikipedia.org/wiki/Projectile_motion"],
     planning=["Copy of CS1 Final Project 1_ Design.pdf",
               "Copy of CS1 Final Project 0_ Pick a Problem.pdf"],
-    links=["https://github.com/YOUR-USERNAME/YOUR-REPO"],
+    links=["https://derekb-udel.github.io/Accuracy-Shot-Site/"],
 )
 start_server(State(52.0, 7.6, 2.0, 4.6, False, 2.1, 1.5, [], ""))
