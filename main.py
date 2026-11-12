@@ -3,24 +3,29 @@
 Uses simple projectile physics (NumPy) to predict whether a basketball
 shot goes in, and shows the ball's path on a graph.
 """
+import math
 from dataclasses import dataclass
 
-import matplotlib.pyplot as plt  # used only to draw the trajectory graph
-import numpy as np
-from drafter import (Button, CheckBox, Header, MatPlotLibPlot, Page,
+import matplotlib
+matplotlib.use("Agg")  # draw graphs without opening a window (needed on GitHub and safe in Thonny)
+import matplotlib.pyplot as plt  # noqa: E402  (must come after matplotlib.use)
+import numpy as np  # noqa: E402
+from drafter import (Button, CheckBox, Header, MatPlotLibPlot, Page,  # noqa: E402
                      SelectBox, Table, TextBox, assert_equal, route,
                      set_site_information, start_server)
 
 # ---------------------------------------------------------------------------
 # STEP 1: Constants (allowed, because they never change)
 # ---------------------------------------------------------------------------
-GRAVITY = 9.80665         # m/s^2 (same value SciPy provides)
-HOOP_HEIGHT = 3.05        # meters (regulation rim)
-HOOP_TOLERANCE = 0.20     # meters of wiggle room that still counts as a swish
-DEFENDER_HEIGHT = 2.1     # meters
-DEFENDER_X = 1.5          # meters in front of the shooter
+GRAVITY = 9.80665          # m/s^2 (same value SciPy provides)
+HOOP_HEIGHT = 3.05         # meters (regulation rim)
+HOOP_TOLERANCE = 0.20      # meters of wiggle room that still counts as a swish
+MAX_DEFENDER_HEIGHT = 1e100    # not a real limit: only stops the computer's numbers overflowing
+MAX_DEFENDER_DISTANCE = 1e100  # same idea: defender can stand as far away as you want
+MAX_DISTANCE = 1_000_000   # basically "as far as you want" (1000 km)
+MAX_SPEED = 1e100          # not a real limit: only stops the computer's numbers overflowing
 CUSTOM_CHOICE = "Custom"
-DISTANCE_OPTIONS = {      # label shown to user -> distance in meters
+DISTANCE_OPTIONS = {       # label shown to user -> distance in meters
     "Free throw (4.6 m)": 4.6,
     "Mid-range (6.0 m)": 6.0,
     "Three-pointer (7.2 m)": 7.2,
@@ -47,6 +52,8 @@ class State:
     current_height: float           # meters (release height)
     current_distance: float         # meters from the hoop
     defender_on: bool               # is the defender on the court?
+    defender_height: float          # how tall the defender is, meters
+    defender_distance: float        # NEW: how far the defender stands from you, meters
     shot_history: list[ShotResult]  # every shot fired so far
     message: str                    # feedback shown on the simulator page
 
@@ -55,16 +62,19 @@ class State:
 # STEP 3: Physics helper functions
 # ---------------------------------------------------------------------------
 def parse_number(text: str) -> float:
-    """Convert text to a float, returning -1.0 if it is not a valid number.
+    """Convert text to a float, returning -1.0 if it is not a usable number.
 
     ADVANCED TECHNIQUE: try/except catches the error Python raises when
     float("abc") fails, so the site doesn't crash on bad input.
-    Not unit tested with a route because it is tested directly below.
+    math.isfinite also rejects "nan" and "inf", which float() accepts.
     """
     try:
-        return float(text)
+        number = float(text)
     except ValueError:
         return -1.0
+    if not math.isfinite(number):
+        return -1.0
+    return number
 
 
 def get_distance(choice: str, custom_text: str) -> float:
@@ -72,6 +82,14 @@ def get_distance(choice: str, custom_text: str) -> float:
     if choice == CUSTOM_CHOICE:
         return parse_number(custom_text)
     return DISTANCE_OPTIONS[choice]
+
+
+def distance_label(distance: float) -> str:
+    """Return the SelectBox label that matches a distance, else "Custom"."""
+    for label, meters in DISTANCE_OPTIONS.items():
+        if meters == distance:
+            return label
+    return CUSTOM_CHOICE
 
 
 def peak_height(angle: float, speed: float, height: float) -> float:
@@ -112,13 +130,24 @@ def miss_amount(angle: float, speed: float, height: float,
     return float(landing_x - distance)
 
 
-def judge_shot(angle: float, speed: float, height: float,
-               distance: float, defender_on: bool) -> str:
+def defender_blocks(angle: float, speed: float, height: float, distance: float,
+                    defender_distance: float, defender_height: float) -> bool:
+    """Return True if the ball hits the defender on its way to the hoop."""
+    if defender_distance >= distance:  # defender is behind the hoop
+        return False
+    ball_height = ball_height_at(defender_distance, angle, speed, height)
+    # The ball must still be in the air (>= 0) and not above the defender
+    return 0 <= ball_height <= defender_height
+
+
+def judge_shot(angle: float, speed: float, height: float, distance: float,
+               defender_on: bool, defender_height: float,
+               defender_distance: float) -> str:
     """Return "Blocked", "Short", "Long", or "Swish!" for a shot."""
-    # IF 1: Defender clearance check
-    if defender_on and DEFENDER_X < distance:
-        if ball_height_at(DEFENDER_X, angle, speed, height) <= DEFENDER_HEIGHT:
-            return "Blocked"
+    # IF 1: Defender clearance check (uses the defender's height and spot)
+    if defender_on and defender_blocks(angle, speed, height, distance,
+                                       defender_distance, defender_height):
+        return "Blocked"
     # IF 2: Angle check (ball never rises to rim height)
     if time_at_hoop(angle, speed, height) < 0:
         return "Short"
@@ -143,16 +172,21 @@ def trajectory_points(angle: float, speed: float,
 
 
 def validate_inputs(angle: float, speed: float, height: float,
-                    distance: float) -> str:
+                    distance: float, defender_height: float,
+                    defender_distance: float) -> str:
     """Return an error message, or "" if all inputs are usable."""
     if not 1 <= angle <= 89:
         return "Angle must be a number from 1 to 89 degrees."
-    if speed <= 0 or speed > 30:
-        return "Speed must be a number between 0 and 30 m/s."
-    if height <= 0 or height > 3:
+    if not 0 < speed <= MAX_SPEED:
+        return "Speed must be a number above 0."
+    if not 0 < height <= 3:
         return "Starting height must be a number between 0 and 3 m."
-    if distance <= 0 or distance > 30:
-        return "Distance must be a number between 0 and 30 m."
+    if not 0 < distance <= MAX_DISTANCE:
+        return f"Distance must be a number above 0 (up to {MAX_DISTANCE} m)."
+    if not 0 < defender_height <= MAX_DEFENDER_HEIGHT:
+        return "Defender height must be a number above 0."
+    if not 0 < defender_distance <= MAX_DEFENDER_DISTANCE:
+        return "Defender distance must be a number above 0."
     return ""
 
 
@@ -168,18 +202,22 @@ def index(state: State) -> Page:
         state.message,
         "Launch angle (1-89 degrees):",
         TextBox("angle_text", str(state.current_angle)),
-        "Ball speed (m/s):",
+        "Ball speed (m/s, no limit):",
         TextBox("speed_text", str(state.current_speed)),
         "Starting height (m):",
         TextBox("height_text", str(state.current_height)),
         "Distance from hoop:",
         SelectBox("distance_choice",
                   list(DISTANCE_OPTIONS) + [CUSTOM_CHOICE],
-                  list(DISTANCE_OPTIONS)[0]),
+                  distance_label(state.current_distance)),
         "Custom distance in meters (only used if 'Custom' is chosen):",
         TextBox("custom_text", str(state.current_distance)),
         CheckBox("defender", state.defender_on),
-        "Add a defender (2.1 m tall, 1.5 m in front of you)",
+        "Add a defender",
+        "Defender height (m):",
+        TextBox("defender_height_text", str(state.defender_height)),
+        "Defender distance from you (m):",
+        TextBox("defender_distance_text", str(state.defender_distance)),
         Button("Fire Shot", fire_shot),
         Button("Shot History", show_history),
         Button("Stats", show_stats),
@@ -189,14 +227,18 @@ def index(state: State) -> Page:
 @route
 def fire_shot(state: State, angle_text: str, speed_text: str,
               height_text: str, distance_choice: str, custom_text: str,
-              defender: bool) -> Page:
+              defender: bool, defender_height_text: str,
+              defender_distance_text: str) -> Page:
     """Read inputs, update the state, judge the shot, save it to history."""
     angle = parse_number(angle_text)
     speed = parse_number(speed_text)
     height = parse_number(height_text)
     distance = get_distance(distance_choice, custom_text)
+    defender_height = parse_number(defender_height_text)
+    defender_distance = parse_number(defender_distance_text)
 
-    error = validate_inputs(angle, speed, height, distance)
+    error = validate_inputs(angle, speed, height, distance,
+                            defender_height, defender_distance)
     if error != "":
         state.message = error
         return index(state)
@@ -207,9 +249,12 @@ def fire_shot(state: State, angle_text: str, speed_text: str,
     state.current_height = height
     state.current_distance = distance
     state.defender_on = defender
+    state.defender_height = defender_height
+    state.defender_distance = defender_distance
     state.message = ""
 
-    outcome = judge_shot(angle, speed, height, distance, defender)
+    outcome = judge_shot(angle, speed, height, distance, defender,
+                         defender_height, defender_distance)
     distance_from = 0.0
     if outcome != "Swish!":
         distance_from = round(abs(miss_amount(angle, speed, height, distance)), 2)
@@ -241,10 +286,14 @@ def show_graph(state: State) -> Page:
     plt.plot(x_values, y_values, label="Ball path")
     plt.scatter([state.current_distance], [HOOP_HEIGHT],
                 color="red", label="Hoop")
+    right_edge = max(float(x_values.max()), state.current_distance)
     if state.defender_on:
-        plt.plot([DEFENDER_X, DEFENDER_X], [0, DEFENDER_HEIGHT],
+        plt.plot([state.defender_distance, state.defender_distance],
+                 [0, state.defender_height],
                  color="black", linewidth=4, label="Defender")
+        right_edge = max(right_edge, state.defender_distance)
     plt.ylim(bottom=0)
+    plt.xlim(0, right_edge * 1.05)  # widen the x-axis so everything is visible
     plt.xlabel("Distance from shooter (m)")
     plt.ylabel("Height (m)")
     plt.title("Shot Trajectory")
@@ -311,28 +360,55 @@ def reset_history(state: State) -> Page:
 # ---------------------------------------------------------------------------
 def make_test_state() -> State:
     """Build a fresh State for tests."""
-    return State(52.0, 7.6, 2.0, 4.6, False, [], "")
+    return State(52.0, 7.6, 2.0, 4.6, False, 2.1, 1.5, [], "")
 
 
 assert_equal(parse_number("12.5"), 12.5)
 assert_equal(parse_number("abc"), -1.0)
+assert_equal(parse_number("inf"), -1.0)
 assert_equal(get_distance("Free throw (4.6 m)", ""), 4.6)
 assert_equal(get_distance(CUSTOM_CHOICE, "9"), 9.0)
-assert_equal(round(peak_height(90, 9.80665, 2.0), 2), 6.9)  # FIXED value
+assert_equal(distance_label(6.0), "Mid-range (6.0 m)")
+assert_equal(distance_label(123.0), CUSTOM_CHOICE)
+assert_equal(round(peak_height(90, 9.80665, 2.0), 2), 6.9)
 assert_equal(time_at_hoop(10, 5, 2.0), -1.0)  # too flat and slow
-assert_equal(judge_shot(52, 7.6, 2.0, 4.6, False), "Swish!")
-assert_equal(judge_shot(52, 6.0, 2.0, 4.6, False), "Short")
-assert_equal(judge_shot(52, 9.0, 2.0, 4.6, False), "Long")
-# FIXED: a flat 5 degree shot hits the defender; a 52 degree arc goes over him
-assert_equal(judge_shot(5, 8.0, 2.0, 4.6, True), "Blocked")
-assert_equal(validate_inputs(52, 7.6, 2.0, 4.6), "")
-assert_equal(validate_inputs(0, 7.6, 2.0, 4.6) != "", True)
+assert_equal(judge_shot(52, 7.6, 2.0, 4.6, False, 2.1, 1.5), "Swish!")
+assert_equal(judge_shot(52, 6.0, 2.0, 4.6, False, 2.1, 1.5), "Short")
+assert_equal(judge_shot(52, 9.0, 2.0, 4.6, False, 2.1, 1.5), "Long")
+# A flat 5 degree shot is about 2 m high at the defender: a 2.1 m defender
+# blocks it, a 0.5 m one does not, and a defender behind the hoop does not
+assert_equal(judge_shot(5, 8.0, 2.0, 4.6, True, 2.1, 1.5), "Blocked")
+assert_equal(judge_shot(5, 8.0, 2.0, 4.6, True, 0.5, 1.5), "Short")
+assert_equal(judge_shot(5, 8.0, 2.0, 4.6, True, 2.1, 10.0), "Short")
+# Defender standing where the ball has already landed does not block it
+assert_equal(defender_blocks(5, 8.0, 2.0, 100.0, 50.0, 2.1), False)
+# A hoop 500 m away is allowed; this shot just falls short
+assert_equal(judge_shot(52, 7.6, 2.0, 500.0, False, 2.1, 1.5), "Short")
+# Speed has no cap: a huge speed sends the ball far past a close hoop
+assert_equal(judge_shot(52, 5000.0, 2.0, 4.6, False, 2.1, 1.5), "Long")
+assert_equal(validate_inputs(52, 7.6, 2.0, 4.6, 2.1, 1.5), "")
+assert_equal(validate_inputs(52, 5000.0, 2.0, 500.0, 2.1, 300.0), "")
+assert_equal(validate_inputs(0, 7.6, 2.0, 4.6, 2.1, 1.5) != "", True)
+assert_equal(validate_inputs(52, 7.6, 2.0, 4.6, 0.0, 1.5) != "", True)
+assert_equal(validate_inputs(52, 7.6, 2.0, 4.6, 2.1, 0.0) != "", True)
+# Defender height and distance have no real cap
+assert_equal(validate_inputs(52, 7.6, 2.0, 4.6, 5000.0, 9e9), "")
 
 # Route tests: fire_shot returns a Page whose .state holds our changes
 fired = fire_shot(make_test_state(), "52", "7.6", "2.0",
-                  "Free throw (4.6 m)", "", False)
+                  "Free throw (4.6 m)", "", False, "2.1", "1.5")
 assert_equal(len(fired.state.shot_history), 1)
 assert_equal(fired.state.shot_history[0].outcome, "Swish!")
+tall = fire_shot(make_test_state(), "52", "7.6", "2.0",
+                 "Free throw (4.6 m)", "", True, "3.0", "2.5")
+assert_equal(tall.state.defender_height, 3.0)
+assert_equal(tall.state.defender_distance, 2.5)
+far = fire_shot(make_test_state(), "52", "7.6", "2.0",
+                CUSTOM_CHOICE, "250", False, "2.1", "1.5")
+assert_equal(far.state.current_distance, 250.0)
+fast = fire_shot(make_test_state(), "52", "5000", "2.0",
+                 "Free throw (4.6 m)", "", False, "2.1", "1.5")
+assert_equal(fast.state.current_speed, 5000.0)
 assert_equal(reset_history(fired.state).state.shot_history, [])
 assert_equal(show_history(make_test_state()).state.shot_history, [])
 assert_equal(show_stats(make_test_state()).state.shot_history, [])
@@ -344,10 +420,11 @@ assert_equal(show_stats(make_test_state()).state.shot_history, [])
 # STEP 6: Start the website
 # ---------------------------------------------------------------------------
 set_site_information(
-    author="YOUR NAME",
+    author="Derek Bellin",
     description="Predicts whether a basketball shot goes in using physics.",
     sources=["https://en.wikipedia.org/wiki/Projectile_motion"],
-    planning=["planning.pdf"],
+    planning=["Copy of CS1 Final Project 1_ Design.pdf",
+              "Copy of CS1 Final Project 0_ Pick a Problem.pdf"],
     links=["https://github.com/YOUR-USERNAME/YOUR-REPO"],
 )
-start_server(State(52.0, 7.6, 2.0, 4.6, False, [], ""))
+start_server(State(52.0, 7.6, 2.0, 4.6, False, 2.1, 1.5, [], ""))
