@@ -80,32 +80,50 @@ CHALLENGE_DISTANCES = [4.6, 6.0, 7.2, 9.0, 14.0]  # the hoop moves around
 DEFENDER_CHANCE = 0.6      # how often a challenge round has a defender
 
 
-# The website's look: a dark arcade theme.
-# Text colors are chosen to stand out against the dark background.
 
 LOOK = {
-    "body": "background: radial-gradient(circle at top, #1b2550, #0b1020 70%);"
-            " color: #e8ecff; font-family: 'Trebuchet MS', Verdana, sans-serif;",
-    "h1": "color: #ff9f1c; text-transform: uppercase; letter-spacing: 3px;"
-          " text-shadow: 0 0 12px #ff9f1c;",
-    "h2": "color: #00e5ff; text-shadow: 0 0 8px #00e5ff;",
-    "h3": "color: #00e5ff;",
-    "p": "color: #e8ecff;",
-    "label": "color: #e8ecff;",
-    "span": "color: #e8ecff;",
-    "li": "color: #e8ecff;",
-    "div": "color: #e8ecff;",
-    "button, input[type=submit]": "background: linear-gradient(#ffb347, #ff7b00);"
-                                  " color: #1a1200; font-weight: bold; border: none;"
-                                  " border-radius: 999px; padding: 8px 22px; margin: 4px;"
-                                  " cursor: pointer; box-shadow: 0 0 10px #ff7b0088;",
-    "input[type=text], select": "background: #121a3a; color: #ffffff;"
-                                " border: 2px solid #3a4a8a; border-radius: 8px;"
-                                " padding: 6px;",
+    "body": "background: radial-gradient(circle at top, #1b2550, #0b1020 70%) !important;"
+            " color: #ffffff !important; font-family: 'Trebuchet MS', Verdana, sans-serif;",
+
+    # Force all regular text to be white
+    "p, span, label, div, li, td, th, strong, em": 
+        "color: #ffffff !important;",
+
+    # Headings
+    "h1": "color: #ff9f1c !important; text-transform: uppercase;"
+          " letter-spacing: 3px; text-shadow: 0 0 12px #ff9f1c;",
+
+    "h2, h3, h4": "color: #00e5ff !important;"
+                  " text-shadow: 0 0 8px #00e5ff;",
+
+    # Buttons
+    "button, input[type=submit]": "background: linear-gradient(#ffb347, #ff7b00) !important;"
+                                  " color: #1a1200 !important; font-weight: bold;"
+                                  " border: none; border-radius: 999px;"
+                                  " padding: 8px 22px; margin: 4px;"
+                                  " cursor: pointer;",
+
+    # Input boxes
+    "input[type=text], select": "background: #121a3a !important;"
+                                " color: #ffffff !important;"
+                                " border: 2px solid #3a4a8a;"
+                                " border-radius: 8px; padding: 6px;",
+
+    # Dropdown options
+    "option": "background: #121a3a !important;"
+              " color: #ffffff !important;",
+
+    # Tables
     "table": "border-collapse: collapse; margin: 10px 0;",
-    "th": "background: #1b2550; color: #00e5ff; padding: 6px 12px;",
-    "td": "background: #121a3a; color: #e8ecff;"
+
+    "th": "background: #1b2550 !important;"
+          " color: #00e5ff !important; padding: 6px 12px;",
+
+    "td": "background: #121a3a !important;"
+          " color: #ffffff !important;"
           " border: 1px solid #3a4a8a; padding: 6px 12px;",
+
+    # Checkboxes
     "input[type=checkbox]": "accent-color: #00e5ff;",
 }
 
