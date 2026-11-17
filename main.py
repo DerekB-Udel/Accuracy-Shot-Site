@@ -79,24 +79,36 @@ CHALLENGE_SHOTS = 5        # shots in one challenge
 CHALLENGE_DISTANCES = [4.6, 6.0, 7.2, 9.0, 14.0]  # the hoop moves around
 DEFENDER_CHANCE = 0.6      # how often a challenge round has a defender
 
-# The website's look: a dark "arcade" theme. Each line is (where, style).
+
+# The website's look: a dark arcade theme.
+# Text colors are chosen to stand out against the dark background.
+
 LOOK = {
     "body": "background: radial-gradient(circle at top, #1b2550, #0b1020 70%);"
             " color: #e8ecff; font-family: 'Trebuchet MS', Verdana, sans-serif;",
     "h1": "color: #ff9f1c; text-transform: uppercase; letter-spacing: 3px;"
           " text-shadow: 0 0 12px #ff9f1c;",
     "h2": "color: #00e5ff; text-shadow: 0 0 8px #00e5ff;",
+    "h3": "color: #00e5ff;",
+    "p": "color: #e8ecff;",
+    "label": "color: #e8ecff;",
+    "span": "color: #e8ecff;",
+    "li": "color: #e8ecff;",
+    "div": "color: #e8ecff;",
     "button, input[type=submit]": "background: linear-gradient(#ffb347, #ff7b00);"
                                   " color: #1a1200; font-weight: bold; border: none;"
                                   " border-radius: 999px; padding: 8px 22px; margin: 4px;"
                                   " cursor: pointer; box-shadow: 0 0 10px #ff7b0088;",
-    "input[type=text], select": "background: #121a3a; color: #e8ecff;"
+    "input[type=text], select": "background: #121a3a; color: #ffffff;"
                                 " border: 2px solid #3a4a8a; border-radius: 8px;"
                                 " padding: 6px;",
     "table": "border-collapse: collapse; margin: 10px 0;",
     "th": "background: #1b2550; color: #00e5ff; padding: 6px 12px;",
-    "td": "border: 1px solid #3a4a8a; padding: 6px 12px;",
+    "td": "background: #121a3a; color: #e8ecff;"
+          " border: 1px solid #3a4a8a; padding: 6px 12px;",
+    "input[type=checkbox]": "accent-color: #00e5ff;",
 }
+
 
 
 def apply_look() -> None:
